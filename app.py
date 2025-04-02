@@ -270,7 +270,7 @@ def leonardo_text_to_image(prompt, parameters):
                 return None
                 
             status_data = status_response.json()
-            st.write(f"Status check {attempt + 1}/{max_attempts}")
+            # st.write(f"Status check {attempt + 1}/{max_attempts}")
             
             # Update progress
             progress = min(1.0, (attempt + 1) / max_attempts)
@@ -352,7 +352,7 @@ def leonardo_image_to_image(prompt, image_file, parameters):
         return None
 
 def login_page():
-    st.title("Leonardo.ai Team UI - Login")
+    st.title("Kalki.ai Team UI - Login")
     
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
