@@ -211,15 +211,19 @@ def leonardo_text_to_image(prompt, parameters):
     }
     
     payload = {
-        "modelId": "6b645e3a-d64f-4341-a6d8-7a3690fbf042",  # Leonardo Creative model
-        "contrast": 3.5,
+        "modelId": "b2614463-296c-462a-9586-aafdb8f00e36",  # Leonardo Creative model
+        # "contrast": 3.5,
         "prompt": prompt,
         "num_images": parameters.get("num_images", 1),
         "width": parameters.get("width", 512),
         "height": parameters.get("height", 512),
-        "ultra": True,
-        "styleUUID": "111dc692-d470-4eec-b791-3475abac4c46",
-        "enhancePrompt": True
+        # "ultra": True,       
+        # "photoRealVersion": "v2",
+        # "alchemy": True,
+        # "photoReal": True,
+        # "photoRealStrength": 0.5,
+        "styleUUID": "3cbb655a-7ca4-463f-b697-8a03ad67327c"
+        
     }
     
     try:
