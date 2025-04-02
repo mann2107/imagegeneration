@@ -222,7 +222,7 @@ def leonardo_text_to_image(prompt, parameters):
         # "alchemy": True,
         # "photoReal": True,
         # "photoRealStrength": 0.5,
-        "styleUUID": "3cbb655a-7ca4-463f-b697-8a03ad67327c"
+        # "styleUUID": "3cbb655a-7ca4-463f-b697-8a03ad67327c"
         
     }
     
