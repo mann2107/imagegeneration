@@ -3,12 +3,22 @@ import hashlib
 import json
 from datetime import datetime
 from model_parameters import get_model_name_from_id, get_style_name_from_id
+import os
 
 # Database setup
-# Make sure .streamlit directory exists
-os.makedirs(".streamlit", exist_ok=True)
+# Check if running in Streamlit Cloud
+if os.path.exists("/mount/src"):
+    # Running in Streamlit Cloud - use the secrets path
+    DB_PATH = "/mount/src/imagegeneration/.streamlit/leonardo_team.db"
+    
+    # Ensure directory exists
+    os.makedirs("/mount/src/imagegeneration/.streamlit", exist_ok=True)
+else:
+    # Running locally
+    os.makedirs(".streamlit", exist_ok=True)
+    DB_PATH = ".streamlit/leonardo_team.db"
 
-DB_PATH = os.path.join(".streamlit", "leonardo_team.db")
+
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
