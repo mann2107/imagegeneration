@@ -5,9 +5,10 @@ from datetime import datetime
 from model_parameters import get_model_name_from_id, get_style_name_from_id
 
 # Database setup
+# Make sure .streamlit directory exists
+os.makedirs(".streamlit", exist_ok=True)
 
-DB_PATH = "leonardo_team.db"
-
+DB_PATH = os.path.join(".streamlit", "leonardo_team.db")
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
