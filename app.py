@@ -306,8 +306,8 @@ def text_to_image_page():
         # Define the three simple dimension presets as requested
         dimension_presets = {
             "Square": (512, 512),
-            "Portrait": (768, 1024),
-            "Landscape": (1024, 768)
+            "Portrait": (576, 1024),
+            "Landscape": (1024, 576)
         }
         
         # Simple radio button selection for the three options
