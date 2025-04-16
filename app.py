@@ -10,7 +10,8 @@ import pandas as pd
 import hashlib
 from dotenv import load_dotenv
 import time
-from db_helper import *
+# from db_helper import *
+from db_helper_mongo import *
 from model_parameters import modelIds, modelTypes, styleUUID, presetStyle, sdxl_params
 
 # Load environment variables
@@ -267,7 +268,6 @@ def main_navigation():
         st.rerun()
     
     return page, admin_page
-
 
 def text_to_image_page():
     st.title("Text to Image Generator")
@@ -679,24 +679,21 @@ def image_to_image_page():
     else:
         st.info("Please upload a source image to continue")
 
-
 def history_page():
     st.title("Generation History")
-    
-    conn = sqlite3.connect(DB_PATH)
-    
+    df = None
     # Get all generations (for both admin and regular users)
-    query = """
-    SELECT g.id, g.username, g.prompt, g.generation_type, g.project, 
-           g.parameters, g.result_url, g.timestamp, g.apiCreditCost
-    FROM generations g
-    ORDER BY g.timestamp DESC
-    """
-    df = pd.read_sql_query(query, conn)
+    generations_list = get_generation_history()
     
-    conn.close()
+    # Convert to DataFrame for Streamlit display if needed
+    if generations_list:
+        df = pd.DataFrame(generations_list)
+        
+        # When converting from MongoDB to DataFrame, _id needs special handling
+        if '_id' in df.columns:
+            df['_id'] = df['_id'].astype(str)
     
-    if len(df) > 0:
+    if df is not None and len(df) > 0:
         # Format dates for better readability
         df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
         
@@ -734,7 +731,7 @@ def history_page():
         # Use an expander for each generation
         for i, row in filtered_df.iterrows():
             # Parse parameters to get metadata
-            params = json.loads(row['parameters'])
+            params = row['parameters']
             metadata = params.get("display_metadata", {})
             
             # Create a more descriptive title for the expander
@@ -752,7 +749,7 @@ def history_page():
                 with img_col:
                     # Parse and display images
                     try:
-                        image_urls = json.loads(row['result_url'])
+                        image_urls = row['result_urls']
                         if image_urls and len(image_urls) > 0:
                             # Display the first image
                             st.image(image_urls[0], use_container_width=True)
@@ -762,9 +759,9 @@ def history_page():
                                 st.download_button(
                                     f"Download Image",
                                     data=requests.get(img_url).content,
-                                    file_name=f"generation_{row['id']}_{idx}.png",
+                                    file_name=f"generation_{row['_id']}_{idx}.png",
                                     mime="image/png",
-                                    key=f"download_{row['id']}_{idx}"
+                                    key=f"download_{row['_id']}_{idx}"
                                 )
                     except Exception as e:
                         st.error(f"Error displaying images: {str(e)}")
@@ -802,7 +799,7 @@ def history_page():
                     st.table(pd.DataFrame(details_table, columns=["Setting", "Value"]))
                     
                     # Option to reuse these settings for a new generation
-                    if st.button("Use These Settings", key=f"reuse_{row['id']}"):
+                    if st.button("Use These Settings", key=f"reuse_{row['_id']}"):
                         # Store settings in session state to be used on the generation page
                         st.session_state.reuse_settings = params
                         st.success("Settings saved! Go to the Text to Image tab to use these settings.")
@@ -810,7 +807,7 @@ def history_page():
         st.info("No generations found in your history.")
         
     # Add option to export history as CSV
-    if len(df) > 0:
+    if df is not None and len(df) > 0:
         st.divider()
         st.subheader("Export History")
         
@@ -818,8 +815,12 @@ def history_page():
         export_df = df.copy()
         
         # Clean up complex JSON columns for export
+        # export_df['parameters'] = export_df['parameters'].apply(
+        #     lambda x: json.dumps(json.loads(x).get("display_metadata", {}))
+        # )
+        # For MongoDB data
         export_df['parameters'] = export_df['parameters'].apply(
-            lambda x: json.dumps(json.loads(x).get("display_metadata", {}))
+            lambda x: json.dumps(x.get("display_metadata", {})) if isinstance(x, dict) else "{}"
         )
         
         # Convert to CSV
@@ -833,14 +834,8 @@ def history_page():
             mime="text/csv"
         )
 
-
 def generate_description_page():
     st.title("Coming Soon")
-
-    
-
-
-
 
 def admin_user_management():
     st.title("User Management")
@@ -868,9 +863,7 @@ def admin_user_management():
     # Display existing users
     st.subheader("Existing Users")
     
-    conn = sqlite3.connect(DB_PATH)
-    users_df = pd.read_sql_query("SELECT username, role, daily_quota, used_today FROM users", conn)
-    conn.close()
+    users_df = get_users_dataframe()
     
     st.dataframe(users_df)
     
@@ -930,14 +923,9 @@ def admin_usage_statistics():
         st.info("No usage data available yet")
     
     # Get project stats
-    conn = sqlite3.connect(DB_PATH)
-    project_stats = pd.read_sql_query("""
-    SELECT project, COUNT(*) as generation_count 
-    FROM generations 
-    GROUP BY project
-    """, conn)
-    conn.close()
+    project_stats = get_project_stats()
     
+
     if not project_stats.empty:
         st.subheader("Generations by Project")
         st.bar_chart(project_stats.set_index('project'))
@@ -981,3 +969,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # history_page()
