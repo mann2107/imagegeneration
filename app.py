@@ -2,15 +2,17 @@ import streamlit as st
 import requests
 import os
 import json
-from PIL import Image
+import requests
+import json
+import time
 import io
-import base64
+    
 from datetime import datetime
 import pandas as pd
-import hashlib
 from dotenv import load_dotenv
 import time
 from db_helper import *
+
 
 from model_parameters import modelIds, modelTypes, styleUUID, presetStyle, sdxl_params
 
@@ -163,55 +165,123 @@ def leonardo_text_to_image(prompt, parameters):
         st.error(f"Failed to parse API response: {str(e)}")
         st.error(f"Raw response: {response.text}")
         return None, apiCreditCost
-    
-
+   
 def leonardo_image_to_image(prompt, image_file, parameters):
     """Call Leonardo API for image-to-image generation"""
-    # This function would need to be implemented based on Leonardo.ai's API
-    # For image-to-image, you typically need to:
-    # 1. Upload the source image to their API or a storage service
-    # 2. Get the URL of the uploaded image
-    # 3. Send a request with the source image URL and other parameters
     
-    # This is a placeholder implementation
-    url = "https://cloud.leonardo.ai/api/rest/v1/generations/img2img"
-    
+    # Configuration
+    # Ensure API key doesn't have any whitespace
+    api_key = LEONARDO_API_KEY.strip()
     headers = {
-        "Authorization": f"Bearer {LEONARDO_API_KEY}"
+        "accept": "application/json",
+        "content-type": "application/json",
+        "authorization": f"Bearer {api_key}"
     }
     
-    # First upload the image
-    files = {"image": image_file}
+    # Debug info - hide actual key for security
+    key_preview = f"{api_key[:5]}...{api_key[-5:]}" if len(api_key) > 10 else "Invalid key format"
+    print(f"Using API key: {key_preview}")
     
     try:
-        # Upload image (this endpoint is hypothetical)
-        upload_response = requests.post(
-            "https://cloud.leonardo.ai/api/rest/v1/uploads", 
-            headers=headers, 
-            files=files
-        )
-        upload_response.raise_for_status()
+        # Step 1: Get a presigned URL for uploading the image
+        init_url = "https://cloud.leonardo.ai/api/rest/v1/init-image"
         
-        # Get the image URL from the response
-        source_image_url = upload_response.json().get("url")
+        # Determine file extension from uploaded file
+        file_name = image_file.name
+        extension = file_name.split('.')[-1].lower()
         
-        # Now call the image-to-image endpoint
-        payload = {
-            "prompt": prompt,
-            "sourceImageUrl": source_image_url,
-            "modelId": parameters.get("model_id", ""),
-            "strength": parameters.get("strength", 0.7),  # How much to transform
-            "num_images": parameters.get("num_images", 1)
-        }
-        
-        response = requests.post(
-            url, 
-            json=payload, 
-            headers={"Authorization": f"Bearer {LEONARDO_API_KEY}", "Content-Type": "application/json"}
-        )
+        payload = {"extension": extension}
+        response = requests.post(init_url, json=payload, headers=headers)
         response.raise_for_status()
-        result = response.json()
-        return result
+        print("Step 1 done")
+        # Step 2: Upload the image using the presigned URL
+        fields = json.loads(response.json()['uploadInitImage']['fields'])
+        upload_url = response.json()['uploadInitImage']['url']
+        image_id = response.json()['uploadInitImage']['id']
+        print("Step 2 done")
+        # Reset file pointer and prepare for upload
+        image_file.seek(0)
+        print("Step 2.1 done")
+        print(image_file)
+        print(file_name)
+        print(f'image/{extension}')
+        files = {'file': (file_name, image_file, f'image/{extension}')}
+        print("Step 2.2 done")
+        
+        # Upload to the presigned URL (no headers needed for this request)
+        upload_response = requests.post(upload_url, data=fields, files=files)
+        upload_response.raise_for_status()
+        print("Step 2.3 done")
+        print(upload_response)
+        # print(f"Upload response: {upload_response.json()}")
+        print("Step 3 done")
+        # Step 3: Generate with the uploaded image
+        generation_url = "https://cloud.leonardo.ai/api/rest/v1/generations"
+        
+        # Extract parameters with defaults
+        model_id = parameters.get("model_id", "6bef9f1b-29cb-40c7-b9df-32b51c1f67d3")  # Default to Leonardo Creative "1e60896f-3c26-4296-8ecc-53e2afecc132"
+        width = parameters.get("width", 512)
+        height = parameters.get("height", 512)
+        num_images = parameters.get("num_images", 1)
+        select_model = parameters.get("select_model", "General")
+        select_dimensions = parameters.get("select_dimensions", "Square")
+        if select_model == "Raja Ravi Varma":
+            model_id = "6bef9f1b-29cb-40c7-b9df-32b51c1f67d3"
+            prompt = prompt + " in style of raja ravi varma"
+        else:
+            model_id = "6bef9f1b-29cb-40c7-b9df-32b51c1f67d3"
+            
+        
+        if select_dimensions == "Portrait":
+            height = 1024
+            width = 576
+        else:
+            height = 1024
+            width = 576
+
+
+        generation_payload = {
+            "height": height,
+            "width": width,
+            "modelId": model_id,
+            "prompt": prompt,
+            "num_images": 1,
+            "init_image_id": image_id,  # Array of image IDs as per API docs            
+            "init_strength": 0.7,
+        }
+        print(generation_payload)
+        print(headers)
+        generation_response = requests.post(generation_url, json=generation_payload, headers=headers)
+        generation_response.raise_for_status()
+        print("Step 3.1 done")
+        
+        # Step 4: Get the generated images
+        generation_id = generation_response.json()['sdGenerationJob']['generationId']
+        results_url = f"https://cloud.leonardo.ai/api/rest/v1/generations/{generation_id}"
+        print("Step 4 done")
+        # Wait for generation to complete
+        max_attempts = 30
+        attempts = 0
+        while attempts < max_attempts:
+            time.sleep(2)  # Wait 2 seconds between checks
+            results_response = requests.get(results_url, headers=headers)
+            results_response.raise_for_status()
+            result_data = results_response.json()
+            print(result_data)
+            # Check if generation is complete
+            status = result_data.get('generations_by_pk', {}).get('status')
+            if status == "COMPLETE":
+                st.write("Generation completed successfully!")
+                return result_data
+            elif status == "FAILED":
+                st.error("Image generation failed")
+                return None
+            
+            attempts += 1
+        
+        st.warning("Generation taking longer than expected. Please check your results page later.")
+        return None
+        
     except requests.exceptions.RequestException as e:
         st.error(f"API Error: {str(e)}")
         return None
@@ -247,9 +317,10 @@ def main_navigation():
     
     page = st.sidebar.radio(
         "Navigation",
-        ["Text to Image", "Image to Image", "View History", "Generate Description"]
+        ["Image to Image", "View History", "Generate Description"]
     )
-    
+    # ["Text to Image", "Image to Image", "View History", "Generate Description"]
+
     # Admin options
     if st.session_state.user["role"] == "admin":
         st.sidebar.divider()
@@ -605,9 +676,11 @@ def image_to_image_page():
         
         # Advanced options with expander
         with st.expander("Advanced Options"):
-            strength = st.slider("Transformation Strength", 0.1, 1.0, 0.7, 0.1)
-            num_images = st.selectbox("Number of Images", [1, 2, 4])
-        
+            strength = 0.5
+            num_images = 1
+            select_dimensions = st.selectbox("Select Dimensions", ["Portrait", "Landscape"])
+            select_model = st.selectbox("Select Style", ["Raja Ravi Varma", "Creative"])
+
         # Check quota before generation
         usage = get_user_usage(st.session_state.user['username'])
         if usage and usage["used_today"] >= st.session_state.user["daily_quota"]:
@@ -624,7 +697,8 @@ def image_to_image_page():
                 # Prepare parameters
                 parameters = {
                     "strength": strength,
-                    "num_images": num_images
+                    "num_images": num_images,
+                    "select_model": select_model
                 }
                 
                 # Reset file pointer
@@ -635,14 +709,14 @@ def image_to_image_page():
                 
                 if result:
                     # Update usage
-                    update_user_usage(st.session_state.user['username'])
+                    update_user_usage(st.session_state.user['username'], 15)
                     
                     # Display results
                     st.subheader("Generated Images")
                     
                     # The response structure will depend on Leonardo's API
                     # This is an example assuming a list of image URLs
-                    image_urls = result.get("generationsByPk", {}).get("generated_images", [])
+                    image_urls = result.get("generations_by_pk", {}).get("generated_images", [])
                     
                     if image_urls:
                         cols = st.columns(len(image_urls))
@@ -672,8 +746,10 @@ def image_to_image_page():
                             generation_type="image_to_image",
                             project=selected_project,
                             parameters=parameters,
-                            result_url=json.dumps(image_urls)
+                            result_images=image_urls,
+                            apiCreditCost=len(image_urls)*15
                         )
+                    
                     else:
                         st.error("No images were generated. Please try again.")
     else:
@@ -731,6 +807,8 @@ def history_page():
         
         # Use an expander for each generation
         for i, row in filtered_df.iterrows():
+            
+
             # Parse parameters to get metadata
             params = json.loads(row['parameters'])
             metadata = params.get("display_metadata", {})
